@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: smooth fonts */
+html, body, #root { height: 100%; }
+body { @apply antialiased; }
