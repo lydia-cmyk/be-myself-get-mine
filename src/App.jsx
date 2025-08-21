@@ -1,5 +1,8 @@
 // src/App.jsx
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import LoginButton from "./components/LoginButton";
+import { onAuth, loginGoogle, handleRedirectResult, loadCloud, saveCloud, logout } from "./lib/firebase";
+import { loadLocal, saveLocal, resolve } from "./lib/sync";
 
 /**
  * Project Manager Web (single-file)
@@ -133,6 +136,12 @@ function buildWeeklyBars(projects, weekStart) {
 
 // ---------- Root ----------
 export default function ProjectManager() {
+  // Cloud sync additions
+  const localInit = loadLocal();
+  const [uid, setUid] = useState(null);
+  const [userName, setUserName] = useState("");
+  const savingRef = useRef(false);
+
   // 👇 여기 두 개만 영구 저장
   const [projects, setProjects] = usePersistentState("pm:projects:v1", []);
   const [activeIndex, setActiveIndex] = usePersistentState("pm:activeIndex:v1", -1);
@@ -202,6 +211,41 @@ export default function ProjectManager() {
   const activeProject = useMemo(() => projects[activeIndex] ?? null, [projects, activeIndex]);
   const weekStart = useMemo(() => startOfWeek(calendarRefDate), [calendarRefDate]);
 
+// Handle redirect login result
+useEffect(() => { handleRedirectResult(); }, []);
+
+// Auth subscribe + first merge
+useEffect(() => {
+  const unsub = onAuth(async (user) => {
+    if (!user) { setUid(null); setUserName(""); return; }
+    setUid(user.uid);
+    setUserName(user.displayName || user.email || "me");
+
+    const cloud = await loadCloud(user.uid);
+    const local = loadLocal();
+    const picked = resolve(local, cloud);
+    setProjects(picked.projects);
+    setActiveIndex(picked.activeIndex);
+  });
+  return () => unsub && unsub();
+}, []);
+
+// Save locally always
+useEffect(() => { saveLocal(projects, activeIndex); }, [projects, activeIndex]);
+
+// Save to cloud when logged in (debounced)
+useEffect(() => {
+  if (!uid) return;
+  const id = setTimeout(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try { await saveCloud(uid, { projects, activeIndex }); }
+    finally { savingRef.current = false; }
+  }, 400);
+  return () => clearTimeout(id);
+}, [uid, projects, activeIndex]);
+
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-pink-50 via-violet-50 to-blue-50">
       {/* Header */}
@@ -209,6 +253,7 @@ export default function ProjectManager() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3">
           <span className="text-2xl">✨</span>
           <h1 className="text-2xl font-extrabold tracking-tight text-violet-700">Be myself, Get mine</h1>
+          <div className="ml-auto"><LoginButton /></div>
         </div>
       </header>
 

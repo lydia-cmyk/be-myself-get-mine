@@ -1,41 +1,30 @@
-import { useState } from "react";
-import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { auth } from "../firebase";
+import { useEffect, useState } from "react";
+import {
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  getRedirectResult, onAuthStateChanged, signOut,
+} from "firebase/auth";
+import { auth } from "../lib/firebase";
 
 export default function LoginButton() {
   const [user, setUser] = useState(null);
 
-  const handleLogin = async () => {
+  useEffect(() => { getRedirectResult(auth).catch(() => {}); }, []);
+  useEffect(() => onAuthStateChanged(auth, setUser), []);
+
+  const login = async () => {
     const provider = new GoogleAuthProvider();
-    try {
-      const result = await signInWithPopup(auth, provider);
-      setUser(result.user);
-      console.log("로그인 성공:", result.user);
-    } catch (error) {
-      console.error("로그인 실패:", error);
-    }
+    try { await signInWithPopup(auth, provider); }
+    catch { await signInWithRedirect(auth, provider); }
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setUser(null);
-      console.log("로그아웃 완료");
-    } catch (error) {
-      console.error("로그아웃 실패:", error);
-    }
-  };
-
-  return (
-    <div>
-      {user ? (
-        <div>
-          <p>안녕하세요, {user.displayName}님!</p>
-          <button onClick={handleLogout}>로그아웃</button>
-        </div>
-      ) : (
-        <button onClick={handleLogin}>구글 로그인</button>
-      )}
+  return user ? (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-600 truncate max-w-[140px]">
+        {user.displayName || user.email}
+      </span>
+      <button onClick={() => signOut(auth)} className="text-xs border rounded px-2 py-1">로그아웃</button>
     </div>
+  ) : (
+    <button onClick={login} className="text-xs border rounded px-2 py-1">Google 로그인</button>
   );
 }
