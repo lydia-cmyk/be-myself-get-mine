@@ -1,18 +1,53 @@
-import React, { useState, useMemo } from "react";
+// src/App.jsx
+import React, { useState, useMemo, useEffect, useRef } from "react";
 
 /**
  * Project Manager Web (single-file)
  * - Sidebar: project list (reorder via DnD)
  * - WeeklyCalendar: top of main area, shows current week's tasks across ALL projects
- *   · Tasks render as bars (작업 단위), multi-week tasks are clipped to current week only
- *   · Bars are color-coded per project (post-it style), thin height to fit many rows
  * - Main: selected project's tasks (inline edit, DnD reorder)
- * - Cute UI, widened layout (sidebar 320px, container max-w-7xl, main min-w 720px)
- * - Includes simple runtime tests logged to console
+ * - Cute UI, widened layout
  */
 
+/* ========= Persistent State Utils (localStorage) ========= */
+const loadState = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const saveStateNow = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+};
+
+const __timers = new Map();
+const saveState = (key, value, delay = 300) => {
+  const prev = __timers.get(key);
+  if (prev) clearTimeout(prev);
+  const id = setTimeout(() => saveStateNow(key, value), delay);
+  __timers.set(key, id);
+};
+
+/** useState처럼 쓰되 값 변경 시 자동으로 localStorage에 저장 */
+const usePersistentState = (key, initialValue) => {
+  const [state, setState] = useState(() => loadState(key, initialValue));
+  const keyRef = useRef(key);
+  useEffect(() => { saveState(keyRef.current, state, 0); }, []);  // 초기 동기화
+  useEffect(() => { saveState(keyRef.current, state); }, [state]);
+  return [state, setState];
+};
+/* ========================================================= */
+
 // ---------- Utils ----------
-const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `id-${Math.random().toString(36).slice(2)}-${Date.now()}`);
+const uid = () =>
+  (typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `id-${Math.random().toString(36).slice(2)}-${Date.now()}`);
 
 const moveItem = (list, from, to) => {
   const arr = [...list];
@@ -41,7 +76,7 @@ const parseDateInput = (s) => {
 const startOfWeek = (date) => {
   const d = new Date(date);
   const day = d.getDay(); // 0 Sun ... 6 Sat
-  const diff = (day === 0 ? -6 : 1 - day); // Monday as first day
+  const diff = day === 0 ? -6 : 1 - day; // Monday as first day
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
   return d;
@@ -56,7 +91,8 @@ const endOfWeek = (date) => {
 };
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-const daysDiff = (a, b) => Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+const daysDiff = (a, b) =>
+  Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 
 // Soft color palette for project bars (post-it style)
 const PROJECT_COLORS = [
@@ -97,9 +133,12 @@ function buildWeeklyBars(projects, weekStart) {
 
 // ---------- Root ----------
 export default function ProjectManager() {
-  const [projects, setProjects] = useState([]);
+  // 👇 여기 두 개만 영구 저장
+  const [projects, setProjects] = usePersistentState("pm:projects:v1", []);
+  const [activeIndex, setActiveIndex] = usePersistentState("pm:activeIndex:v1", -1);
+
+  // 나머지는 휘발성
   const [newProject, setNewProject] = useState("");
-  const [activeIndex, setActiveIndex] = useState(-1);
   const [dragProjectIndex, setDragProjectIndex] = useState(null);
   const [calendarRefDate, setCalendarRefDate] = useState(new Date());
 
@@ -214,7 +253,9 @@ export default function ProjectManager() {
               >
                 <span className="text-xl shrink-0">📁</span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-base font-medium whitespace-normal break-words leading-snug">{p.name || "제목 없음"}</div>
+                  <div className="text-base font-medium whitespace-normal break-words leading-snug">
+                    {p.name || "제목 없음"}
+                  </div>
                 </div>
                 <span className="text-[11px] text-gray-500 shrink-0 pl-2">{p.tasks.length}개</span>
                 <button
@@ -265,7 +306,7 @@ function EmptyState() {
   return (
     <div className="h-full min-h-[40vh] grid place-items-center">
       <div className="text-center bg-white/70 border border-violet-100 rounded-3xl p-10 shadow-sm">
-        <div className="text-5xl mb-2">🎀</div>
+        <div className="text-5xl mb-2">🌺</div>
         <h2 className="text-lg font-bold text-violet-700">선택된 프로젝트가 없어</h2>
         <p className="text-sm text-gray-500 mt-1">왼쪽에서 프로젝트를 추가하거나 선택해줘.</p>
       </div>
@@ -560,21 +601,17 @@ function TaskItem({ task, onChange, onDelete, onMoveUp, onMoveDown, draggable, o
 
 // ---------- Simple runtime tests (console) ----------
 function __tests__() {
-  // moveItem tests
   const a = ["A", "B", "C"]; const r1 = moveItem(a, 0, 2); console.assert(r1.join(",") === "B,C,A", "moveItem to end failed");
   const r2 = moveItem(a, 2, 0); console.assert(r2.join(",") === "C,A,B", "moveItem to start failed");
   const r3 = moveItem(a, 1, 1); console.assert(r3.join(",") === "A,B,C", "moveItem same index failed");
-  // average progress
   const avg1 = calcAverageProgress([{ progress: 0 }, { progress: 50 }, { progress: 100 }]); console.assert(avg1 === 50, "avg 50 failed");
   const avg2 = calcAverageProgress([]); console.assert(avg2 === 0, "avg empty failed");
-  // week math + local date parser
   const ref = new Date("2025-08-18T12:00:00"); // Mon
   const sw = startOfWeek(ref); const ew = endOfWeek(ref);
   console.assert(sw.getDay() === 1, "week should start Mon");
   console.assert(daysDiff(sw, ew) === 6, "week span 6 days");
   const dLocal = parseDateInput("2025-08-22");
   console.assert(dLocal && dLocal.getFullYear() === 2025 && dLocal.getMonth() === 7 && dLocal.getDate() === 22, "parseDateInput failed");
-  // buildWeeklyBars: title should prefer task title, clip into week
   const ws = new Date(2025, 7, 18, 0, 0, 0, 0); // 2025-08-18 Mon
   const testProjects = [{ name: "P1", tasks: [{ title: "T1", start: "2025-08-22", end: "2025-08-27" }] }];
   const bars = buildWeeklyBars(testProjects, ws);
