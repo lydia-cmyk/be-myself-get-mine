@@ -145,7 +145,7 @@ export default function ProjectManager() {
 
   // helpers
   const addProject = (e) => {
-    e?.preventDefault?.();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     const name = (newProject || "").trim();
     if (!name) return;
     const created = { id: makeId(), name, emoji: "📁", colorIdx: projects.length % PROJECT_COLORS.length, tasks: [] };
@@ -371,7 +371,7 @@ function ProjectDetail({ project, index, setProjects, updateProjectName }) {
   };
 
   const addTask = (e) => {
-    e?.preventDefault?.();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     const title = (newTask?.title || "").trim() || "제목 없음";
     setProjects((prev) => {
       const next = [...prev];
